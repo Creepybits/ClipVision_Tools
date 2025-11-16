@@ -4,6 +4,8 @@ import folder_paths
 import orjson
 
 from .utils import (generate_clip_features_json)
+import fnmatch
+import time
 
 class LoadDB:
     """
@@ -126,3 +128,4 @@ class GenerateDB:
             return errors,
         except Exception as e:
             return f"Error generating database file: {e}"
+
