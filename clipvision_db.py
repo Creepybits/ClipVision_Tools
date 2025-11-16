@@ -4,8 +4,6 @@ import folder_paths
 import orjson
 
 from .utils import (generate_clip_features_json)
-import fnmatch
-import time
 
 class LoadDB:
     """
@@ -22,18 +20,17 @@ class LoadDB:
 
     @classmethod
     def INPUT_TYPES(s):
-        return {           
-            "required": { 
+        return {
+            "required": {
                 "db_name": (folder_paths.get_filename_list("EmbDBs"),) ,
                 "path_to_images_folder": ("STRING", {
                     "multiline": False,
-                    "default": "/path/to/folder/with/images",
-                    "tooltip": "Basepath to the folder containing the images"
-                }), 
+                    "default": "/path/to/folder/with/images"
+                }),
             },
                 "optional": {
                 "img_db": ("LoadDB",),
-            }                            
+            }
         }
 
     RETURN_TYPES = ("LoadDB", )
@@ -52,7 +49,7 @@ class LoadDB:
 
         Returns:
             A LoadDB object.
-        """        
+        """
         db_path = folder_paths.get_full_path_or_raise("EmbDBs", db_name)
         if self.LOADED_DB_Name != db_path or path_to_images_folder != self.images_folder:
             try:
@@ -68,109 +65,42 @@ class LoadDB:
             except Exception as e:
                 print(f"Error loading database file: {e}")
                 return None,
-            
+
         if img_db is not None:
             self.LOADED_DB = self.MY_LOADED_DB + img_db.LOADED_DB
         else:
             self.LOADED_DB = self.MY_LOADED_DB
-        return self, 
-
-class EditDB:
-
-    MY_LOADED_DB: list = None
-    LOADED_DB: list = None
-    LOADED_DB_Name = ""
-    images_folder = ""
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {           
-            "required": { 
-                "img_db": ("LoadDB",),
-                "method": (["exclude", "filter", "replace"], {"default": "exclude", "tooltip": "Method to edit results"}),
-                "edit_text": ("STRING", {
-                    "multiline": False,
-                    "default": "remove*images.jpg",
-                    "tooltip": "Use wildcards (*) to match filenames or paths"
-                },),                            
-                "replace_text": ("STRING", {
-                    "multiline": False,
-                    "default": "/newpath/",
-                    "tooltip": "Text to replace matched text with when using 'replace' method"
-                },),                            
-            }
-        }
-
-    RETURN_TYPES = ("LoadDB", )
-    RETURN_NAMES = ("IMG_DB", )
-    FUNCTION = "Edit_DB"
-    CATEGORY = "ClipVisionTools"
-
-    def Edit_DB(self, img_db:LoadDB, method, edit_text, replace_text):
-        NewDB = LoadDB()
-        NewDB.LOADED_DB = []
-
-        if isinstance(edit_text, str):
-            edit_text = [edit_text]
-
-        for file_name, embeddings in img_db.LOADED_DB:
-            if method == "exclude":
-                if not any(fnmatch.fnmatch(file_name, pat) for pat in edit_text):
-                    NewDB.LOADED_DB.append((file_name, embeddings))
-
-            if method == "filter":
-                if any(fnmatch.fnmatch(file_name, pat) for pat in edit_text):
-                    NewDB.LOADED_DB.append((file_name, embeddings))
-
-            if method == "replace":
-                new_name = file_name
-                for pat in edit_text:
-                    if fnmatch.fnmatch(file_name, pat):
-                        new_name = file_name.replace(pat.strip("*"), replace_text)
-                NewDB.LOADED_DB.append((new_name, embeddings))
-
-        return NewDB, 
+        return self,
 
 class GenerateDB:
     """
     Generates a new image database from a folder of images.
     """
-    last_error: bool = True
-    last_time: float = 0.0
-
     def __init__(self):
         pass
     @classmethod
     def INPUT_TYPES(s):
         return {
-            "required": { 
+            "required": {
                 "clip_vision": ("CLIP_VISION",),
                 "path_to_images_folder": ("STRING", {
                     "multiline": False,
-                    "default": "path/to/folder/with/images",
-                    "tooltip": "Basepath to the folder containing the images"
+                    "default": "path/to/folder/with/images"
                 }),
                 "new_db_name": ("STRING", {
                     "multiline": False,
-                    "default": "new_img_db.json",
-                    "tooltip": "Name of the new database file to create"
+                    "default": "new_img_db.json"
                 }),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
             }
         }
-    
+
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("ERRORS",)
     OUTPUT_NODE = True
 
     FUNCTION = "start_gen_db"
     CATEGORY = "ClipVisionTools"
-    def start_gen_db(self, clip_vision, path_to_images_folder, new_db_name, unique_id):
+    def start_gen_db(self, clip_vision, path_to_images_folder, new_db_name):
         """
         Generates a new image database.
 
@@ -181,13 +111,18 @@ class GenerateDB:
 
         Returns:
             A string containing any errors that occurred.
-        """        
+        """
+        # Make sure the database name ends with .json
+        if not new_db_name.endswith('.json'):
+            new_db_name += '.json'
+
         path_to_images = Path(path_to_images_folder)
         path_to_database = Path(folder_paths.get_folder_paths("EmbDBs")[0]) / new_db_name
-        
-        path_to_database.parent.mkdir(exist_ok=True)
-        
-        errors = generate_clip_features_json(clip_vision, path_to_images, path_to_database, unique_id)
-        return errors,
-        
 
+        path_to_database.parent.mkdir(exist_ok=True)
+
+        try:
+            errors = generate_clip_features_json(clip_vision, path_to_images, path_to_database)
+            return errors,
+        except Exception as e:
+            return f"Error generating database file: {e}"
