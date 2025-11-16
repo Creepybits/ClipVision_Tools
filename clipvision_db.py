@@ -27,7 +27,8 @@ class LoadDB:
                 "db_name": (folder_paths.get_filename_list("EmbDBs"),) ,
                 "path_to_images_folder": ("STRING", {
                     "multiline": False,
-                    "default": "/path/to/folder/with/images"
+                    "default": "/path/to/folder/with/images",
+                    "tooltip": "Basepath to the folder containing the images"
                 }),
             },
                 "optional": {
@@ -74,10 +75,72 @@ class LoadDB:
             self.LOADED_DB = self.MY_LOADED_DB
         return self,
 
+class EditDB:
+
+    MY_LOADED_DB: list = None
+    LOADED_DB: list = None
+    LOADED_DB_Name = ""
+    images_folder = ""
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "img_db": ("LoadDB",),
+                "method": (["exclude", "filter", "replace"], {"default": "exclude", "tooltip": "Method to edit results"}),
+                "edit_text": ("STRING", {
+                    "multiline": False,
+                    "default": "remove*images.jpg",
+                    "tooltip": "Use wildcards (*) to match filenames or paths"
+                },),
+                "replace_text": ("STRING", {
+                    "multiline": False,
+                    "default": "/newpath/",
+                    "tooltip": "Text to replace matched text with when using 'replace' method"
+                },),
+            }
+        }
+
+    RETURN_TYPES = ("LoadDB", )
+    RETURN_NAMES = ("IMG_DB", )
+    FUNCTION = "Edit_DB"
+    CATEGORY = "ClipVisionTools"
+
+    def Edit_DB(self, img_db:LoadDB, method, edit_text, replace_text):
+        NewDB = LoadDB()
+        NewDB.LOADED_DB = []
+
+        if isinstance(edit_text, str):
+            edit_text = [edit_text]
+
+        for file_name, embeddings in img_db.LOADED_DB:
+            if method == "exclude":
+                if not any(fnmatch.fnmatch(file_name, pat) for pat in edit_text):
+                    NewDB.LOADED_DB.append((file_name, embeddings))
+
+            if method == "filter":
+                if any(fnmatch.fnmatch(file_name, pat) for pat in edit_text):
+                    NewDB.LOADED_DB.append((file_name, embeddings))
+
+            if method == "replace":
+                new_name = file_name
+                for pat in edit_text:
+                    if fnmatch.fnmatch(file_name, pat):
+                        new_name = file_name.replace(pat.strip("*"), replace_text)
+                NewDB.LOADED_DB.append((new_name, embeddings))
+
+        return NewDB,
+
 class GenerateDB:
     """
     Generates a new image database from a folder of images.
     """
+    last_error: bool = True
+    last_time: float = 0.0
+
     def __init__(self):
         pass
     @classmethod
@@ -87,12 +150,17 @@ class GenerateDB:
                 "clip_vision": ("CLIP_VISION",),
                 "path_to_images_folder": ("STRING", {
                     "multiline": False,
-                    "default": "path/to/folder/with/images"
+                    "default": "path/to/folder/with/images",
+                    "tooltip": "Basepath to the folder containing the images"
                 }),
                 "new_db_name": ("STRING", {
                     "multiline": False,
-                    "default": "new_img_db.json"
+                    "default": "new_img_db.json",
+                    "tooltip": "Name of the new database file to create"
                 }),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
             }
         }
 
@@ -102,7 +170,7 @@ class GenerateDB:
 
     FUNCTION = "start_gen_db"
     CATEGORY = "ClipVisionTools"
-    def start_gen_db(self, clip_vision, path_to_images_folder, new_db_name):
+    def start_gen_db(self, clip_vision, path_to_images_folder, new_db_name, unique_id):
         """
         Generates a new image database.
 
@@ -123,9 +191,5 @@ class GenerateDB:
 
         path_to_database.parent.mkdir(exist_ok=True)
 
-        try:
-            errors = generate_clip_features_json(clip_vision, path_to_images, path_to_database)
-            return errors,
-        except Exception as e:
-            return f"Error generating database file: {e}"
-
+        errors = generate_clip_features_json(clip_vision, path_to_images, path_to_database, unique_id)
+        return errors,
